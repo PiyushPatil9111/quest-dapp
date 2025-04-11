@@ -1,0 +1,774 @@
+<%- include partials/header.ejs %>
+
+<div class="container mt-4">
+  <h1>Welcome to Quest DApp</h1>
+  
+  <!-- MetaMask Connection -->
+  <div class="card mt-4">
+    <div class="card-header">
+      Connect Your Wallet
+    </div>
+    <div class="card-body">
+      <button id="connectWallet" class="btn btn-primary">Connect MetaMask</button>
+      <p id="walletStatus" class="mt-2">Not connected</p>
+    </div>
+  </div>
+
+  <!-- Savings Goal Form -->
+  <div class="card mt-4" id="goalForm" style="display:none;">
+    <div class="card-header">
+      Create Savings Goal
+    </div>
+    <div class="card-body">
+      <form id="createGoal">
+        <div class="form-group">
+          <label>Target Amount (fUSDC)</label>
+          <input type="number" class="form-control" id="goalAmount" required>
+        </div>
+        <div class="form-group">
+          <label>Deadline (days)</label>
+          <input type="number" class="form-control" id="goalDeadline" required>
+        </div>
+        <button type="submit" class="btn btn-success">Create Goal</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- views/index.ejs -->
+
+<!-- ... (Keep the HTML structure above the script tag) ... -->
+
+<!-- Add placeholders for Balance, Vault Status and Deposit Form -->
+<div class="card mt-4" id="dappSection" style="display:none;">
+  <div class="card-header">
+    Your Quest Info
+  </div>
+  <div class="card-body">
+    <h5>Wallet: <span id="userAddress"></span></h5>
+    <h5 class="mt-2">fUSDC Balance: <span id="fusdcBalance">Loading...</span></h5>
+    <button id="getTokensBtn" class="btn btn-info btn-sm mt-1">Get 200 Test fUSDC</button>
+    <hr>
+    <h5>Vault Status: <span id="vaultStatus">No active vault</span></h5>
+    <div id="vaultDetails" style="font-size: 0.9em;"></div>
+    <hr>
+
+    <!-- Deposit Form (Show only if vault is active) -->
+    <div id="depositForm" style="display:none;">
+        <h5>Deposit fUSDC</h5>
+        <div class="form-group">
+            <label>Amount to Deposit</label>
+            <input type="number" class="form-control" id="depositAmount" placeholder="e.g., 5">
+        </div>
+        <button id="approveBtn" class="btn btn-warning mr-2">1. Approve fUSDC</button>
+        <button id="depositBtn" class="btn btn-success" disabled>2. Deposit</button>
+        <p id="depositMsg" class="mt-2 text-muted"></p>
+    </div>
+  </div>
+</div>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script>
+  // --- Ethers.js Setup ---
+  let provider;
+  let signer;
+  let userAddress;
+  let fUSDCContract;
+  let questVaultContract;
+
+  const fUSDCAddress = "0x5F0AfDa16217dB4F9077b7c6666E24B20963788C";
+  const questVaultAddress = "0xb0Fa7F35cA1115faB50f887EfF75a2e28309BBe5";
+
+  const fUSDCAbi = [
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "spender",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "allowance",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "needed",
+				"type": "uint256"
+			}
+		],
+		"name": "ERC20InsufficientAllowance",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "balance",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "needed",
+				"type": "uint256"
+			}
+		],
+		"name": "ERC20InsufficientBalance",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "approver",
+				"type": "address"
+			}
+		],
+		"name": "ERC20InvalidApprover",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "receiver",
+				"type": "address"
+			}
+		],
+		"name": "ERC20InvalidReceiver",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			}
+		],
+		"name": "ERC20InvalidSender",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "spender",
+				"type": "address"
+			}
+		],
+		"name": "ERC20InvalidSpender",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			}
+		],
+		"name": "OwnableInvalidOwner",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "OwnableUnauthorizedAccount",
+		"type": "error"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "spender",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "Approval",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "previousOwner",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "OwnershipTransferred",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "Transfer",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "spender",
+				"type": "address"
+			}
+		],
+		"name": "allowance",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "spender",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "approve",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "balanceOf",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "decimals",
+		"outputs": [
+			{
+				"internalType": "uint8",
+				"name": "",
+				"type": "uint8"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "mint",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "name",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "renounceOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "symbol",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "totalSupply",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "transfer",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "transferFrom",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "transferOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+] // FUSD ABI
+  const questVaultAbi = [
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "recipient",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "transfer",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "recipient",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "transferFrom",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+] // ABI code of QuestVault contract
+
+  const fUSDCDecimals = 6; // IMPORTANT: Match your contract's TOKEN_DECIMALS (6 or 18)
+
+  // DOM Elements
+  const connectWalletBtn = document.getElementById('connectWallet');
+  const walletStatus = document.getElementById('walletStatus');
+  const goalFormDiv = document.getElementById('goalForm');
+  const createGoalForm = document.getElementById('createGoal');
+  const dappSection = document.getElementById('dappSection');
+  const userAddrSpan = document.getElementById('userAddress');
+  const fusdcBalanceSpan = document.getElementById('fusdcBalance');
+  const getTokensBtn = document.getElementById('getTokensBtn');
+  const vaultStatusSpan = document.getElementById('vaultStatus');
+  const vaultDetailsDiv = document.getElementById('vaultDetails');
+  const depositFormDiv = document.getElementById('depositForm');
+  const depositAmountInput = document.getElementById('depositAmount');
+  const approveBtn = document.getElementById('approveBtn');
+  const depositBtn = document.getElementById('depositBtn');
+  const depositMsg = document.getElementById('depositMsg');
+
+
+  // --- Functions ---
+
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert('Please install MetaMask!');
+      return;
+    }
+    try {
+      provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []); // Request connection
+      signer = await provider.getSigner();
+      userAddress = await signer.getAddress();
+
+      walletStatus.textContent = `Connected: ${userAddress.substring(0, 6)}...${userAddress.substring(userAddress.length - 4)}`;
+      connectWalletBtn.textContent = 'Connected';
+      connectWalletBtn.disabled = true;
+      goalFormDiv.style.display = 'block'; // Show create goal form
+      dappSection.style.display = 'block'; // Show DApp info section
+      userAddrSpan.textContent = userAddress;
+
+      // Initialize contracts
+      fUSDCContract = new ethers.Contract(fUSDCAddress, fUSDCAbi, signer);
+      questVaultContract = new ethers.Contract(questVaultAddress, questVaultAbi, signer);
+
+      // Initial UI updates
+      updateBalance();
+      updateVaultStatus();
+
+      // Send address to backend (optional, only if backend needs it beyond faucet)
+      // fetch('/quest/login', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ address: userAddress })
+      // });
+
+    } catch (error) {
+      console.error("Connection failed:", error);
+      walletStatus.textContent = 'Connection failed. Please try again.';
+    }
+  }
+
+  async function updateBalance() {
+    if (!fUSDCContract || !userAddress) return;
+    try {
+        const balanceWei = await fUSDCContract.balanceOf(userAddress);
+        // Format the balance using the correct decimals
+        fusdcBalanceSpan.textContent = ethers.formatUnits(balanceWei, fUSDCDecimals);
+    } catch (error) {
+        console.error("Failed to fetch balance:", error);
+        fusdcBalanceSpan.textContent = "Error";
+    }
+  }
+
+   async function updateVaultStatus() {
+       if (!questVaultContract || !userAddress) return;
+       try {
+           // Call the checkMyVault function
+           const vaultData = await questVaultContract.checkMyVault();
+           const [target, deadline, saved, active] = vaultData; // Destructure the result tuple
+
+           if (active) {
+               const deadlineDate = new Date(Number(deadline) * 1000); // Convert timestamp to Date
+               const targetFormatted = ethers.formatUnits(target, fUSDCDecimals);
+               const savedFormatted = ethers.formatUnits(saved, fUSDCDecimals);
+
+               vaultStatusSpan.textContent = "Active";
+               vaultDetailsDiv.innerHTML = `
+                   Target: ${targetFormatted} fUSDC<br>
+                   Saved: ${savedFormatted} fUSDC<br>
+                   Deadline: ${deadlineDate.toLocaleString()}
+               `;
+               depositFormDiv.style.display = 'block'; // Show deposit form
+               goalFormDiv.style.display = 'none'; // Hide create form
+           } else {
+               vaultStatusSpan.textContent = "No active vault";
+               vaultDetailsDiv.innerHTML = "";
+               depositFormDiv.style.display = 'none'; // Hide deposit form
+               goalFormDiv.style.display = 'block'; // Show create form
+           }
+       } catch (error) {
+           console.error("Failed to fetch vault status:", error);
+           vaultStatusSpan.textContent = "Error checking vault";
+       }
+   }
+
+
+  async function handleGetTokens() {
+    getTokensBtn.disabled = true;
+    getTokensBtn.textContent = 'Minting...';
+    try {
+      const response = await fetch('/quest/get-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: userAddress })
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert(`Tokens minted! Tx: ${result.txHash.substring(0, 10)}... Check balance.`);
+        // Wait a bit for balance update on chain/subgraph
+        setTimeout(updateBalance, 5000); // Update balance after 5s
+      } else {
+        alert(`Failed to get tokens: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Faucet request failed:", error);
+      alert("Error requesting tokens.");
+    } finally {
+       getTokensBtn.disabled = false;
+       getTokensBtn.textContent = 'Get 200 Test fUSDC';
+    }
+  }
+
+  async function handleCreateGoal(event) {
+    event.preventDefault();
+    const amount = document.getElementById('goalAmount').value;
+    const days = document.getElementById('goalDeadline').value;
+
+    if (!questVaultContract || !amount || !days || amount <= 0 || days <= 0) {
+        alert("Please enter valid goal amount and deadline days.");
+        return;
+    }
+
+    try {
+        // We pass the 'human' amount, contract converts using TOKEN_DECIMALS
+        const tx = await questVaultContract.createVault(
+            ethers.parseUnits(amount, 0), // Use parseUnits(amount, 0) if contract expects whole number *before* decimal conversion
+            // OR just pass amount directly if contract expects number like "10" and multiplies by 10**decimals itself
+            // Based on our contract: pass the human amount directly
+            amount,
+            days
+        );
+        alert("Creating vault... please wait for confirmation.");
+        await tx.wait(); // Wait for transaction to be mined
+        alert("Vault created successfully!");
+        updateVaultStatus(); // Refresh vault display
+    } catch (error) {
+        console.error("Create Vault failed:", error);
+        alert(`Error creating vault: ${error.message}`);
+    }
+  }
+
+  async function handleApprove() {
+    const amountToDeposit = depositAmountInput.value;
+    if (!fUSDCContract || !amountToDeposit || amountToDeposit <= 0) {
+        alert("Please enter a valid amount to deposit.");
+        return;
+    }
+    approveBtn.disabled = true;
+    approveBtn.textContent = "Approving...";
+    depositMsg.textContent = "Waiting for approval transaction...";
+    try {
+        // Convert human amount to smallest unit for approval
+        const amountSmallestUnit = ethers.parseUnits(amountToDeposit, fUSDCDecimals);
+        const tx = await fUSDCContract.approve(questVaultAddress, amountSmallestUnit);
+        await tx.wait();
+        depositMsg.textContent = `Approved ${amountToDeposit} fUSDC for spending. You can now deposit.`;
+        depositBtn.disabled = false; // Enable deposit button
+    } catch (error) {
+        console.error("Approve failed:", error);
+        alert(`Error approving fUSDC: ${error.message}`);
+        depositMsg.textContent = "Approval failed.";
+    } finally {
+        approveBtn.disabled = false;
+        approveBtn.textContent = "1. Approve fUSDC";
+    }
+  }
+
+  async function handleDeposit() {
+     const amountToDeposit = depositAmountInput.value;
+     if (!questVaultContract || !amountToDeposit || amountToDeposit <= 0) {
+         alert("Please enter a valid amount to deposit.");
+         return;
+     }
+     depositBtn.disabled = true;
+     depositBtn.textContent = "Depositing...";
+     depositMsg.textContent = "Waiting for deposit transaction...";
+
+     try {
+         // Pass human amount, contract converts
+         const tx = await questVaultContract.deposit(amountToDeposit);
+         await tx.wait();
+         alert("Deposit successful!");
+         depositMsg.textContent = "Deposit confirmed!";
+         updateBalance(); // Update balance after deposit
+         updateVaultStatus(); // Update vault saved amount
+     } catch (error) {
+         console.error("Deposit failed:", error);
+         alert(`Error depositing fUSDC: ${error.message}`);
+         depositMsg.textContent = `Deposit failed: ${error.reason || error.message}`; // Show reason if available
+     } finally {
+        // Keep deposit disabled until next approval? Or re-enable?
+        // Let's require re-approval for safety/simplicity
+        // depositBtn.disabled = false;
+        depositBtn.textContent = "2. Deposit";
+     }
+  }
+
+
+  // --- Event Listeners ---
+  connectWalletBtn.onclick = connectWallet;
+  getTokensBtn.onclick = handleGetTokens;
+  createGoalForm.onsubmit = handleCreateGoal;
+  approveBtn.onclick = handleApprove;
+  depositBtn.onclick = handleDeposit;
+
+
+</script>
+
+<%- include partials/footer.ejs %>
