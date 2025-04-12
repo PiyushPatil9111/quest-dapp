@@ -1,5 +1,10 @@
 // routes/index.js
-var express = require('express');
+const express = require('express');
+const app = express();
+
+// Serve static files from the 'public' directory
+app.use(express.static('public'));
+
 var router = express.Router();
 
 /* GET home page. */
