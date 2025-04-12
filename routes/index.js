@@ -1,11 +1,9 @@
 // routes/index.js
 const express = require('express');
-const app = express();
+const router = express.Router();
 
 // Serve static files from the 'public' directory
-app.use(express.static('public'));
-
-var router = express.Router();
+router.use(express.static('public'));
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
@@ -16,13 +14,16 @@ router.get('/', function(req, res, next) {
    });
 });
 
+router.get('/page1', function(req, res, next) {
+  res.render('page1', { title: 'Welcome to Web3 BootStrap App', name:null });
+});
+
 router.get('/page2', function(req, res, next) {
-  
   res.render('page2', { title: 'ETH Transfer (Page 2)', name:null });
 });
 
-router.get('/page1', function(req, res, next) {
-  res.render('page1', { title: 'Welcome to Web3 BootStrap App', name:null });
+router.get('/page3', function(req, res, next) {
+  res.render('page3', { title: 'Completed Goals', name:null });
 });
 
 module.exports = router;

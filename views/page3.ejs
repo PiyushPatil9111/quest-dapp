@@ -1,33 +1,415 @@
 <%- include partials/header.ejs %>
 
-<!DOCTYPE html>
-        <html>
-           <head>
-              <title>OSM and Leaflet</title>
-              <link rel = "stylesheet" href = "http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.css"/>
-           </head><body>
-              <div id = "map" style = "width: 900px; height: 580px"></div><script src = "http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
-              <script>
-                 // Creating map options
-                 var mapOptions = {
-                    center: [17.385044, 78.486671],
-                    zoom: 10
-                 }
-                 
-                 // Creating a map object
-                 var map = new L.map('map', mapOptions);
-                 
-                 // Creating a Layer object
-                 var layer = new L.TileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
-                 
-                 // Adding layer to the map
-                 map.addLayer(layer);
-              </script>
-           </body>
-           
-        </html>
+<div class="container mt-4">
+  <h2>Completed Goals</h2>
+  
+  <div class="card">
+    <div class="card-body">
+      <button id="connectBtn" class="btn btn-primary mb-3">Connect Wallet</button>
+      
+      <div id="walletInfo" style="display:none;">
+        <p>Wallet: <span id="walletAddress"></span></p>
+      </div>
 
+      <div id="completedGoals">
+        <p>Please connect your wallet to view completed goals</p>
+      </div>
+    </div>
+  </div>
+</div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script>
+  const connectBtn = document.getElementById('connectBtn');
+  const walletInfo = document.getElementById('walletInfo');
+  const walletAddress = document.getElementById('walletAddress');
+  const completedGoals = document.getElementById('completedGoals');
 
+  const FUSDC_ADDRESS = "0x5F0AfDa16217dB4F9077b7c6666E24B20963788C".toLowerCase();
+  const TOKEN_DECIMALS = 6;
 
+  // Add your Quest Vault contract address and ABI here
+  const questVaultAddress = "0xb0Fa7F35cA1115faB50f887EfF75a2e28309BBe5";
+  const questVaultAbi = [
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_fUSDC_address",
+				"type": "address"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "DepositMade",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amountReturned",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "bonus",
+				"type": "uint256"
+			}
+		],
+		"name": "GoalCompleted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "target",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "deadline",
+				"type": "uint256"
+			}
+		],
+		"name": "VaultCreated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amountReturned",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "penalty",
+				"type": "uint256"
+			}
+		],
+		"name": "WithdrewEarly",
+		"type": "event"
+	},
+	{
+		"inputs": [],
+		"name": "PENALTY_PERCENT",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "TOKEN_DECIMALS",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "checkMyVault",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "target",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "deadline",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "saved",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "active",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "completeGoal",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_targetAmountHuman",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_days",
+				"type": "uint256"
+			}
+		],
+		"name": "createVault",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_amountHuman",
+				"type": "uint256"
+			}
+		],
+		"name": "deposit",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "fUSDC",
+		"outputs": [
+			{
+				"internalType": "contract ISimpleERC20",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "penaltyPool",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "userVaults",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "target",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "deadline",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "saved",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "active",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "withdrawEarly",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+];
+
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert('Please install MetaMask!');
+      return;
+    }
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
+      const userAddress = await signer.getAddress();
+      
+      walletAddress.textContent = userAddress.slice(0, 6) + '...' + userAddress.slice(-4);
+      walletInfo.style.display = 'block';
+      connectBtn.style.display = 'none';
+
+      // Initialize contract
+      const questVaultContract = new ethers.Contract(questVaultAddress, questVaultAbi, signer);
+      
+      // Load completed goals
+      await loadCompletedGoals(questVaultContract, userAddress);
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      alert('Error connecting wallet. Check console for details.');
+    }
+  }
+
+  async function loadCompletedGoals(contract, userAddress) {
+    completedGoals.innerHTML = '<p class="text-center">Loading completed goals...</p>';
+
+    try {
+      // Get completed goals events
+      const completedFilter = contract.filters.GoalCompleted(userAddress);
+      const completedEvents = await contract.queryFilter(completedFilter);
+
+      // Get vault creation events to match with completions
+      const createdFilter = contract.filters.VaultCreated(userAddress);
+      const createdEvents = await contract.queryFilter(createdFilter);
+
+      if (completedEvents.length === 0) {
+        completedGoals.innerHTML = '<p class="text-center">No completed goals found</p>';
+        return;
+      }
+
+      let html = '<div class="list-group">';
+      
+      for (const event of completedEvents) {
+        const block = await event.getBlock();
+        const date = new Date(block.timestamp * 1000);
         
+        // Find matching creation event
+        const creationEvent = createdEvents.find(e => 
+          e.transactionHash === event.transactionHash || 
+          e.blockNumber < event.blockNumber
+        );
+
+        const amountReturned = ethers.formatUnits(event.args.amountReturned, TOKEN_DECIMALS);
+        const bonus = ethers.formatUnits(event.args.bonus, TOKEN_DECIMALS);
+        const target = creationEvent ? 
+          ethers.formatUnits(creationEvent.args.target, TOKEN_DECIMALS) : 
+          'Unknown';
+
+        html += `
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <h5 class="mb-1">Goal Completed</h5>
+                <p class="mb-1">Target Amount: ${target} fUSDC</p>
+                <small class="text-muted">Completed on: ${date.toLocaleString()}</small>
+              </div>
+              <div class="text-end">
+                <div class="text-success">Amount: ${amountReturned} fUSDC</div>
+                <div class="text-info">Bonus: ${bonus} fUSDC</div>
+              </div>
+            </div>
+            <div class="mt-2">
+              <small>
+                <a href="https://sepolia.etherscan.io/tx/${event.transactionHash}" 
+                   target="_blank" 
+                   class="text-muted">
+                  View on Etherscan
+                </a>
+              </small>
+            </div>
+          </div>
+        `;
+      }
+
+      html += '</div>';
+      completedGoals.innerHTML = html;
+
+    } catch (error) {
+      console.error('Error loading completed goals:', error);
+      completedGoals.innerHTML = '<p class="text-danger">Error loading completed goals</p>';
+    }
+  }
+
+  // Event listeners
+  connectBtn.onclick = connectWallet;
+
+  // Check if wallet is already connected
+  window.addEventListener('load', async () => {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          connectWallet();
+        }
+      } catch (error) {
+        console.error('Error checking wallet connection:', error);
+      }
+    }
+  });
+</script>
+
+<%- include partials/footer.ejs %>

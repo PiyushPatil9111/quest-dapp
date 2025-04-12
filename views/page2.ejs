@@ -1,169 +1,191 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>PayApp 12.07</title>
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.2.7-rc.0/web3.min.js"></script>
-    <style>
-       body {
-            background-color: rgb(112, 140, 216);
-            font-family: tahoma;
-            font-size: 33px;
-            display: flex;
-            flex-direction: row;
-        }
-        button {
-            background-color: rgb(203, 220, 223);
-            font-size: 33px;
-            padding: 5px;
-            font-family: Impact;
-        }
-        input {
-            width: 25vw;
-            height: 30px;
-            font-size: 25px;
-            font-family: tahoma;
-            outline: none;
-        }
-        #readArea {
-            flex-basis: 50%;
-        }
-        #writeArea {
-            flex-basis: 50%;
-        }
-        button:hover {
-            background-color: rgb(255, 0, 0);
-        }
+<%- include partials/header.ejs %>
 
+<div class="container mt-4">
+  <h2>Transfer Tokens</h2>
+  
+  <div class="card">
+    <div class="card-body">
+      <button id="connectBtn" class="btn btn-primary mb-3">Connect Wallet</button>
+      
+      <div id="walletInfo" style="display:none;">
+        <p>Wallet: <span id="walletAddress"></span></p>
+        <p>Balance: <span id="tokenBalance">0</span> fUSDC</p>
+      </div>
 
-    </style>
-</head>
-<body>
-
-    <div id="readArea"> <!-- READING FROM CONTRACT -->
-        <button onclick="connectMetamask()">CONNECT TO METAMASK</button>
-        <p id="userArea">Status: Not connected to Metamask</p>
-         <!-- index html to meta-->
-
-        <button onclick="connectContract()">CONNECT TO CONTRACT</button>
-        <p id="contractArea">Status: Not connected to Contract</p>
-        <!-- meta to SC -->
-
-        <button onclick="getContractAccount()"> GET CONTRACT ACCOUNT </button>
-        <p id="contractAccount">Contract Account: Not Connected to Contract</p>
-        <!-- CAlling the function designed in Transactions.sol get deployment addresss -->
-
-        <button onclick="getBalanceApple()">GET BALANCE OF THE CONTRACT</button>
-        <p id="balanceArea">Balance: Not Connected to Contract</p>
-        <!-- CAlling the function designed in Transactions.sol get balance -->
-
-        
+      <div id="transferForm" style="display:none;">
+        <div class="form-group mb-3">
+          <label for="recipientAddress">Recipient Address</label>
+          <input type="text" class="form-control" id="recipientAddress" placeholder="0x...">
+        </div>
+        <div class="form-group mb-3">
+          <label for="amount">Amount (fUSDC)</label>
+          <input type="number" class="form-control" id="amount" placeholder="Amount to transfer">
+        </div>
+        <button id="transferBtn" class="btn btn-success">Transfer</button>
+      </div>
     </div>
+  </div>
+</div>
 
-    <div id="writeArea"><!-- WRITING TO CONTRACT -->
-        <button onclick="depositContract()">Send ether to the Contract</button><br>
-        <input type="number" id="depositInput" placeholder="Enter Amount"><br> <br>
-          <!-- Deposit to contract calling on deposit function -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script>
+  const connectBtn = document.getElementById('connectBtn');
+  const walletInfo = document.getElementById('walletInfo');
+  const walletAddress = document.getElementById('walletAddress');
+  const tokenBalance = document.getElementById('tokenBalance');
+  const transferForm = document.getElementById('transferForm');
+  const transferBtn = document.getElementById('transferBtn');
 
-        <button onclick="withdraw()">WITHDRAW ETHER TO ANY ADDRESS</button> <br>
-        <input type="text" id="addressInput" placeholder="Enter Address"> <br>
-        <input type="number" id="amountInput" placeholder="Enter Amount"> 
-                <!-- CAlling the function designed in Transactions.sol -->
-        <!-- calling the withdraw function -->
-    </div>
+  const FUSDC_ADDRESS = "0x5F0AfDa16217dB4F9077b7c6666E24B20963788C";
+  let userAddress;
+  let fUSDCContract;
 
-    <script> // the below script code is convention in web3 in forming the communication with Web
-
-        let account;
-        const connectMetamask = async () => {
-            if(window.ethereum !== "undefined") {
-                const accounts = await ethereum.request({method: "eth_requestAccounts"});
-                account = accounts[0];
-                document.getElementById("userArea").innerHTML = `User Account: ${account}`;
-            }
+  const fUSDCAbi = [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
         }
-
-        const connectContract = async () => {
-            const ABI = [
-	{
-		"inputs": [],
-		"name": "deposit",
-		"outputs": [],
-		"stateMutability": "payable",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getAddress",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getBalance",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address payable",
-				"name": "_to",
-				"type": "address"
-			},
-			{
-				"internalType": "uint256",
-				"name": "_amount",
-				"type": "uint256"
-			}
-		],
-		"name": "withdraw",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	}
-];
-            const Address = "0xDAC6931b112ece0dB418B355a8059F90F6F6E261"; // Taking Address from Remix 
-            window.web3 = await new Web3(window.ethereum);
-            window.contract = await new window.web3.eth.Contract(ABI, Address);
-            document.getElementById("contractArea").innerHTML = "Connected to Contract"; // calling the elementID above
+      ],
+      "name": "transfer",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
-
-        const getContractAccount = async () => {
-            const data = await window.contract.methods.getAddress().call();
-            document.getElementById("contractAccount").innerHTML = `Contract Account: ${data}`;
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
         }
-
-        const getBalanceApple = async () => { // const getBalanceApple is the HTML function & .contract.getBalance is the smart contract function
-            const data = await window.contract.methods.getBalance().call();
-            document.getElementById("balanceArea").innerHTML = `Contract Balance: ${data}`;
+      ],
+      "name": "balanceOf",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ];
 
-        const depositContract = async () => {
-            const amount = document.getElementById("depositInput").value;
-            await window.contract.methods.deposit().send({from: account, value: amount});
-        }
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert('Please install MetaMask!');
+      return;
+    }
 
-        const withdraw = async () => {
-            const amount = document.getElementById("amountInput").value;
-            const address = document.getElementById("addressInput").value;
-            await window.contract.methods.withdraw(address, amount).send({from: account});
-        }
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
+      userAddress = await signer.getAddress();
+      
+      walletAddress.textContent = userAddress.slice(0, 6) + '...' + userAddress.slice(-4);
+      walletInfo.style.display = 'block';
+      transferForm.style.display = 'block';
+      connectBtn.style.display = 'none';
 
-    </script>
-   
-</body>
-</html>
+      // Initialize contract with signer
+      fUSDCContract = new ethers.Contract(FUSDC_ADDRESS, fUSDCAbi, signer);
+      
+      // Get and display balance
+      await updateBalance();
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      alert('Error connecting wallet: ' + error.message);
+    }
+  }
+
+  async function updateBalance() {
+    if (!fUSDCContract || !userAddress) return;
+    try {
+      const balance = await fUSDCContract.balanceOf(userAddress);
+      tokenBalance.textContent = ethers.formatUnits(balance, 6);
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+    }
+  }
+
+  async function handleTransfer() {
+    const recipient = document.getElementById('recipientAddress').value;
+    const amount = document.getElementById('amount').value;
+
+    if (!recipient || !amount) {
+      alert('Please enter recipient address and amount');
+      return;
+    }
+
+    if (!ethers.isAddress(recipient)) {
+      alert('Invalid recipient address');
+      return;
+    }
+
+    transferBtn.disabled = true;
+    transferBtn.textContent = 'Transferring...';
+
+    try {
+      const amountInSmallestUnit = ethers.parseUnits(amount.toString(), 6);
+      
+      // Check balance before transfer
+      const balance = await fUSDCContract.balanceOf(userAddress);
+      if (balance < amountInSmallestUnit) {
+        alert('Insufficient balance');
+        return;
+      }
+
+      const tx = await fUSDCContract.transfer(recipient, amountInSmallestUnit);
+      console.log('Transaction sent:', tx.hash);
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt);
+      
+      alert('Transfer successful!');
+      await updateBalance();
+      
+      // Clear form
+      document.getElementById('recipientAddress').value = '';
+      document.getElementById('amount').value = '';
+    } catch (error) {
+      console.error('Transfer error:', error);
+      alert(`Transfer failed: ${error.message}`);
+    } finally {
+      transferBtn.disabled = false;
+      transferBtn.textContent = 'Transfer';
+    }
+  }
+
+  // Event listeners
+  connectBtn.onclick = connectWallet;
+  transferBtn.onclick = handleTransfer;
+
+  // Check if wallet is already connected
+  window.addEventListener('load', async () => {
+    if (window.ethereum) {
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length > 0) {
+        connectWallet();
+      }
+    }
+  });
+</script>
+
+<%- include partials/footer.ejs %>
