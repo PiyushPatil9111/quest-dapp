@@ -1,43 +1,143 @@
 <%- include partials/header.ejs %>
 
+<div class="container mt-4">
+  <h2>Your Transactions</h2>
+  
+  <div class="card">
+    <div class="card-body">
+      <button id="connectBtn" class="btn btn-primary mb-3">Connect Wallet</button>
+      
+      <div id="walletInfo" style="display:none;">
+        <p>Wallet: <span id="walletAddress"></span></p>
+      </div>
 
-<div class="jumbotron">
-    <h1 class="display-4"> Welcome !</h1>
-    <p class="lead">This is our app</p>
-    <hr class="my-4">
-    <p></p>
-    <p class="lead">
-      <a class="btn btn-success btn-lg" href="#" role="button">Learn more</a>
-    </p>
+      <div id="txList">
+        <p>Please connect your wallet first</p>
+      </div>
+    </div>
   </div>
-
-<div class="container">
-<table class="table table-dark">
-    <thead>
-      <tr>
-        <th scope="col">#</th>
-        <th scope="col">First</th>
-        <th scope="col">Last</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <th scope="row">1</th>
-        <td>Mark</td>
-        <td>Otto</td>
-      </tr>
-      <tr>
-        <th scope="row">2</th>
-        <td>Jacob</td>
-        <td>Thornton</td>
-      </tr>
-      <tr>
-        <th scope="row">3</th>
-        <td>Larry</td>
-        <td>the Bird</td>
-      </tr>
-    </tbody>
-  </table>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.1/ethers.umd.min.js"></script>
+<script>
+  const connectBtn = document.getElementById('connectBtn');
+  const walletInfo = document.getElementById('walletInfo');
+  const walletAddress = document.getElementById('walletAddress');
+  const txList = document.getElementById('txList');
+
+  const FUSDC_ADDRESS = "0x5F0AfDa16217dB4F9077b7c6666E24B20963788C".toLowerCase();
+
+  async function connectWallet() {
+    if (!window.ethereum) {
+      alert('Please install MetaMask!');
+      return;
+    }
+
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const userAddress = accounts[0];
+      
+      walletAddress.textContent = userAddress.slice(0, 6) + '...' + userAddress.slice(-4);
+      walletInfo.style.display = 'block';
+      connectBtn.textContent = 'Connected';
+      connectBtn.disabled = true;
+
+      txList.innerHTML = 'Loading transactions...';
+      
+      const [txResponse, tokenResponse] = await Promise.all([
+        fetch(`https://api-sepolia.etherscan.io/api?module=account&action=txlist&address=${userAddress}&page=1&offset=10&sort=desc&apikey=RZ69Y535YV75X98JVHYTAZBF6KAZBDSUQX`),
+        fetch(`https://api-sepolia.etherscan.io/api?module=account&action=tokentx&address=${userAddress}&page=1&offset=10&sort=desc&apikey=RZ69Y535YV75X98JVHYTAZBF6KAZBDSUQX`)
+      ]);
+
+      const txData = await txResponse.json();
+      const tokenData = await tokenResponse.json();
+
+      let allTx = [];
+
+      if (txData.status === '1' && txData.result.length > 0) {
+        txData.result.forEach(tx => {
+          if (tx.value !== '0') {
+            allTx.push({
+              timestamp: parseInt(tx.timeStamp),
+              type: 'ETH',
+              value: tx.value,
+              from: tx.from.toLowerCase(),
+              to: tx.to.toLowerCase()
+            });
+          }
+        });
+      }
+
+      if (tokenData.status === '1' && tokenData.result.length > 0) {
+        tokenData.result.forEach(tx => {
+          if (tx.contractAddress.toLowerCase() === FUSDC_ADDRESS) {
+            allTx.push({
+              timestamp: parseInt(tx.timeStamp),
+              type: 'fUSDC',
+              value: tx.value,
+              from: tx.from.toLowerCase(),
+              to: tx.to.toLowerCase()
+            });
+          }
+        });
+      }
+
+      allTx.sort((a, b) => b.timestamp - a.timestamp);
+
+      if (allTx.length > 0) {
+        let html = '<ul class="list-group">';
+        allTx.forEach(tx => {
+          const date = new Date(tx.timestamp * 1000).toLocaleString();
+          const isSent = tx.from === userAddress.toLowerCase();
+          const direction = isSent ? 'Sent' : 'Received';
+          const symbol = isSent ? '-' : '+';
+          
+          let value;
+          if (tx.type === 'ETH') {
+            value = `${ethers.formatEther(tx.value)} Sepolia ETH`;
+          } else {
+            value = `${ethers.formatUnits(tx.value, 6)} fUSDC`;
+          }
+
+          html += `
+            <li class="list-group-item">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>${direction} ${tx.type}</strong><br>
+                  ${date}
+                </div>
+                <div class="text-${isSent ? 'danger' : 'success'}">
+                  ${symbol} ${value}
+                </div>
+              </div>
+            </li>
+          `;
+        });
+        html += '</ul>';
+        txList.innerHTML = html;
+      } else {
+        txList.innerHTML = '<p>No transactions found</p>';
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      txList.innerHTML = '<p>Error loading transactions. Check console for details.</p>';
+    }
+  }
+
+  window.addEventListener('load', async () => {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          connectWallet();
+        }
+      } catch (error) {
+        console.error('Error checking wallet connection:', error);
+      }
+    }
+  });
+
+  connectBtn.onclick = connectWallet;
+</script>
 
 <%- include partials/footer.ejs %>
